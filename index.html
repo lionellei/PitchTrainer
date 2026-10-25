@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pitch Beacon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: compact readout, a large scrolling pitch graph, one big action button, key and settings below. Dark only, built for a car. */
+:root{
+  --bg:#0f1214; --panel:#171c1f; --line:#283035; --fg:#e8ecea; --muted:#8b979a;
+  --tune:#5fd39a; --sharp:#f2a541; --flat:#5aa9f0; --accent:#5fd39a; --trace:#f4e04d;
+  --display:"Saira Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font-family:var(--body);font-size:16px;line-height:1.45;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:max(24px,env(safe-area-inset-bottom,0px));
+  padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+main{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:12px;padding-block:12px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+h1{font-family:var(--display);font-weight:700;font-size:1.4rem;letter-spacing:.04em;margin:0;text-transform:uppercase}
+.status{font-size:.85rem;color:var(--muted);text-align:right}
+
+.readout{display:grid;grid-template-columns:auto 1fr auto;align-items:end;gap:4px 14px}
+.note{font-family:var(--display);font-weight:700;font-size:3.4rem;line-height:.95;min-width:2.6ch;font-variant-numeric:tabular-nums}
+.cents{font-family:var(--display);font-weight:500;font-size:2rem;line-height:1;font-variant-numeric:tabular-nums;color:var(--muted)}
+.state-tune .cents{color:var(--tune)} .state-sharp .cents{color:var(--sharp)} .state-flat .cents{color:var(--flat)}
+.tag{text-align:right;font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.tag b{display:block;color:var(--fg);font-size:1rem;letter-spacing:.04em}
+.meter{grid-column:1/-1;position:relative;height:10px;border-radius:5px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+.zone{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--tune) 25%,transparent)}
+.mid{position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--muted)}
+.needle{position:absolute;top:1px;bottom:1px;width:6px;margin-left:-3px;border-radius:3px;background:var(--fg);left:50%;opacity:0}
+.progress{grid-column:1/-1;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--accent)}
+
+.graph{position:relative;height:52vh;min-height:300px;background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.graph canvas{display:block;width:100%;height:100%}
+
+.go{font:inherit;font-family:var(--display);font-weight:700;font-size:1.6rem;letter-spacing:.06em;text-transform:uppercase;
+  border:0;border-radius:14px;padding:18px 16px;background:var(--accent);color:#08130d;cursor:pointer;width:100%}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1 1 0;min-width:0}
+button.toggle[aria-pressed="true"]{background:var(--accent);color:#08130d;border-color:var(--accent)}
+button.small{font:inherit;font-weight:600;font-size:.95rem;padding:12px 8px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+section h2{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
+.manual{display:flex;gap:8px}
+select{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px;flex:1;min-width:0}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chip{font:inherit;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:#08130d;border-color:var(--accent)}
+.chip small{font-weight:500;opacity:.7;margin-left:4px}
+.note-line{font-size:.88rem;color:var(--muted);margin:8px 0 0}
+
+details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 16px}
+summary{cursor:pointer;padding:12px 0;font-weight:600}
+.set{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.set label{font-weight:500}
+.set output{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem}
+.set input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.set p{grid-column:1/-1;margin:0;font-size:.82rem;color:var(--muted)}
+.set select{grid-column:1/-1}
+.check{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.err{color:var(--sharp);font-size:.9rem;margin:0}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Pitch Beacon</h1>
+    <div class="status" id="status">Mic off</div>
+  </header>
+
+  <div class="readout" id="readout">
+    <div class="note" id="note">–</div>
+    <div class="cents" id="cents"></div>
+    <div class="tag"><span id="phase">Ready</span><b id="keyName">No key</b></div>
+    <div class="meter" aria-hidden="true"><div class="zone" id="zone"></div><div class="mid"></div><div class="needle" id="needle"></div></div>
+    <div class="progress" id="progWrap" hidden><i id="prog"></i></div>
+  </div>
+
+  <div class="graph"><canvas id="graph" aria-label="Pitch over the last 8 seconds"></canvas></div>
+
+  <button class="go" id="mainBtn">Start</button>
+  <div class="row">
+    <button class="small" id="stopBtn" disabled>Stop mic</button>
+    <button class="small toggle" id="refBtn" aria-pressed="false">Reference tone: Off</button>
+  </div>
+  <p class="err" id="err" hidden></p>
+
+  <section>
+    <h2>Key</h2>
+    <div class="manual">
+      <select id="tonicSel" aria-label="Key">
+        <option value="detect">Detect by singing</option>
+      </select>
+      <select id="modeSel" aria-label="Scale">
+        <option value="major">Major</option>
+        <option value="minor">Minor</option>
+        <option value="chromatic">Chromatic (any note)</option>
+      </select>
+    </div>
+    <p class="note-line" id="keyHelp"></p>
+    <div class="chips" id="chips"></div>
+    <p class="note-line" id="tuningLine"></p>
+  </section>
+
+  <details>
+    <summary>Feedback settings</summary>
+    <div class="row" style="padding:4px 0 12px">
+      <button class="small" id="testSharp">Hear "sharp"</button>
+      <button class="small" id="testFlat">Hear "flat"</button>
+    </div>
+    <div class="set"><label for="refVol">Reference tone volume</label><output id="refVolOut"></output>
+      <input type="range" id="refVol" min="0.1" max="2" step="0.05"></div>
+    <div class="set"><label for="refTimbre">Reference tone sound</label>
+      <select id="refTimbre">
+        <option value="strings">Warm strings</option>
+        <option value="reed">Bright reed (cuts through road noise)</option>
+        <option value="sine">Pure sine (quietest, cleanest separation)</option>
+      </select>
+      <p>Plays the scale note nearest to what you are singing and moves when you settle on a new note.</p></div>
+    <div class="set"><label for="refOct">Reference tone octave</label>
+      <select id="refOct">
+        <option value="0">Same octave as my note</option>
+        <option value="12">One octave above</option>
+        <option value="-12">One octave below</option>
+      </select></div>
+    <div class="set"><label>Reference leak check</label><output id="leakOut"></output>
+      <button class="small" id="leakBtn" style="grid-column:1/-1">Check leak (sing a few notes first, then stay quiet)</button>
+      <p>Plays the reference for 1.5 s and measures how much reaches the mic compared with your singing. Below −18 dB is clean.</p></div>
+    <div class="set"><label for="dz">Dead zone (silent within)</label><output id="dzOut"></output>
+      <input type="range" id="dz" min="5" max="40" step="1"></div>
+    <div class="set"><label for="full">Fastest pulse at</label><output id="fullOut"></output>
+      <input type="range" id="full" min="30" max="120" step="5">
+      <p>How far off you need to be before the pulses reach full speed.</p></div>
+    <div class="set"><label for="maxR">Fastest pulse rate</label><output id="maxROut"></output>
+      <input type="range" id="maxR" min="4" max="14" step="1"></div>
+    <div class="set"><label for="vol">Feedback volume</label><output id="volOut"></output>
+      <input type="range" id="vol" min="0.1" max="1.5" step="0.05"></div>
+    <div class="set"><label for="follow">Follow my singing volume</label><output id="followOut"></output>
+      <input type="range" id="follow" min="0" max="1" step="0.05">
+      <p>At 100%, every 6 dB louder you sing makes the feedback 6 dB louder.</p></div>
+    <div class="set"><label for="listen">Listening time</label><output id="listenOut"></output>
+      <input type="range" id="listen" min="3" max="20" step="1">
+      <p>Seconds of steady singing to collect before the key locks.</p></div>
+    <div class="set"><label for="gate">Mic sensitivity threshold</label><output id="gateOut"></output>
+      <input type="range" id="gate" min="0.002" max="0.04" step="0.001">
+      <p>Raise this if road noise triggers readings. Lower it if soft singing is ignored.</p></div>
+    <div class="set"><label for="span">Graph height</label><output id="spanOut"></output>
+      <input type="range" id="span" min="8" max="30" step="1"></div>
+    <div class="set"><label for="ref">Reference pitch</label>
+      <select id="ref">
+        <option value="a440">Concert pitch (A = 440 Hz)</option>
+        <option value="mine">My opening (follow how I started)</option>
+      </select>
+      <p>"My opening" only works after detecting by singing. It forgives a steady offset and judges intonation only.</p></div>
+    <label class="check"><input type="checkbox" id="speak"> Say the key out loud when it locks</label>
+    <label class="check"><input type="checkbox" id="ec"> Echo cancellation (keeps the feedback out of the mic; applies on next start)</label>
+  </details>
+</main>
+
+<script id="core">
+// ---------- Pure signal-processing core (no DOM) ----------
+var Core = (function(){
+  const NAMES=['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+  const KEY_MAJ=['C','D♭','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+  const KEY_MIN=['C','C♯','D','E♭','E','F','F♯','G','G♯','A','B♭','B'];
+  const MAJ_PROF=[6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+  const MIN_PROF=[6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+  // minor allows natural and raised 7th
+  const SCALES={major:[0,2,4,5,7,9,11], minor:[0,2,3,5,7,8,10,11]};
+  let dbuf=null;
+
+  function yin(b, sr, fmin, fmax, th){
+    fmin=fmin||70; fmax=fmax||1100; th=th||0.12;
+    const N=b.length, W=N>>1;
+    const tauMin=Math.max(2,Math.floor(sr/fmax)), tauMax=Math.min(W-2,Math.ceil(sr/fmin));
+    if(!dbuf||dbuf.length<tauMax+2) dbuf=new Float32Array(tauMax+2);
+    const d=dbuf; d[0]=1; let run=0;
+    for(let tau=1;tau<=tauMax+1;tau++){
+      let s=0; for(let i=0;i<W;i++){const x=b[i]-b[i+tau]; s+=x*x;}
+      run+=s; d[tau]=run>0? s*tau/run : 1;
+    }
+    let found=-1;
+    for(let tau=tauMin;tau<=tauMax;tau++){
+      if(d[tau]<th){ while(tau+1<=tauMax && d[tau+1]<d[tau]) tau++; found=tau; break; }
+    }
+    if(found<0) return null;
+    // Octave check: when the fundamental is weak and the 2nd harmonic strong (phone mics,
+    // "oo"/"ee" vowels), YIN can dip at half the true period and read an octave high.
+    // If that dip is shallow and the one at twice the period is much deeper, the true pitch is the lower one.
+    const t2=found*2;
+    if(t2+1<=tauMax){
+      let m2=t2; for(let k=t2-2;k<=t2+2;k++) if(k>0&&k<=tauMax&&d[k]<d[m2]) m2=k;
+      if(d[found]>0.02 && d[m2] < 0.35*d[found]) found=m2;
+    }
+    const x0=d[found-1],x1=d[found],x2=d[found+1], den=x0+x2-2*x1;
+    const shift=den!==0? (x0-x2)/(2*den) : 0;
+    return {f: sr/(found+shift), ap:x1};
+  }
+
+  const midiOf=f=>69+12*Math.log2(f/440);
+  const pc=n=>((n%12)+12)%12;
+  const noteName=m=>{const r=Math.round(m); return NAMES[pc(r)]+(Math.floor(r/12)-1);};
+
+  function tuningOf(ms){
+    let c=0,s=0; for(const m of ms){const a=2*Math.PI*(m-Math.round(m)); c+=Math.cos(a); s+=Math.sin(a);}
+    return Math.atan2(s,c)/(2*Math.PI);
+  }
+  function pearson(x,y){
+    const n=x.length; let mx=0,my=0; for(let i=0;i<n;i++){mx+=x[i];my+=y[i];} mx/=n; my/=n;
+    let sxy=0,sxx=0,syy=0; for(let i=0;i<n;i++){const a=x[i]-mx,b=y[i]-my; sxy+=a*b; sxx+=a*a; syy+=b*b;}
+    return sxx&&syy? sxy/Math.sqrt(sxx*syy) : 0;
+  }
+  function detectKey(ms, tuning){
+    const ch=new Array(12).fill(0);
+    for(const m of ms) ch[pc(Math.round(m-tuning))]+=1;
+    const out=[];
+    for(let t=0;t<12;t++){
+      const r=Array.from({length:12},(_,i)=>ch[(i+t)%12]);
+      out.push({tonic:t, mode:'major', score:pearson(r,MAJ_PROF)});
+      out.push({tonic:t, mode:'minor', score:pearson(r,MIN_PROF)});
+    }
+    out.sort((a,b)=>b.score-a.score);
+    return {ranked:out, chroma:ch, distinct:ch.filter(v=>v>0).length};
+  }
+  function keyLabel(k){
+    if(!k) return 'No key';
+    if(k.mode==='chromatic') return 'Chromatic';
+    return (k.mode==='major'?KEY_MAJ:KEY_MIN)[k.tonic]+(k.mode==='major'?' major':' minor');
+  }
+  const keySpoken=k=>keyLabel(k).replace('♭',' flat').replace('♯',' sharp');
+  function inScale(n,key){ if(!key||key.mode==='chromatic') return true; return SCALES[key.mode].indexOf(pc(n-key.tonic))>=0; }
+
+  function targetErr(m, key){
+    if(!key || key.mode==='chromatic'){ const t=Math.round(m); return {target:t, err:(m-t)*100}; }
+    let best=null, bd=1e9;
+    for(let n=Math.floor(m)-2;n<=Math.floor(m)+3;n++){
+      if(!inScale(n,key)) continue;
+      const d=Math.abs(m-n); if(d<bd){bd=d;best=n;}
+    }
+    return {target:best, err:(m-best)*100};
+  }
+
+  // Groups frames into notes, centres vibrato, gates glides, ignores single-frame outliers.
+  function Smoother(opts){
+    opts=opts||{};
+    const span=opts.span||0.2, settle=opts.settle||0.15, jump=opts.jump||0.9, hold=opts.hold||0.12;
+    let win=[], transT=-1, lastV=-1, pend=[];
+    const avg=()=>{let s=0; for(const w of win) s+=w.m; return s/win.length;};
+    const res=now=>({stable: win.length>=4 && now-transT>=settle, mean: win.length?avg():null});
+    return function(now,m){
+      if(m==null){ if(now-lastV>hold){ win=[]; pend=[]; } return {stable:false, mean:win.length?avg():null}; }
+      lastV=now;
+      while(win.length && now-win[0].t>span) win.shift();
+      if(!win.length){ win=[{t:now,m}]; transT=now; pend=[]; return res(now); }
+      const dev=m-avg();
+      if(Math.abs(dev)>jump){
+        // Believe a jump only after consecutive agreeing frames: 2 for a normal leap,
+        // 6 (~180 ms) for an exact octave, which is usually a tracking slip, not singing.
+        if(pend.length && Math.abs(m-pend[pend.length-1].m)<0.5) pend.push({t:now,m}); else pend=[{t:now,m}];
+        const octave=Math.abs(dev-12*Math.round(dev/12))<0.6;
+        if(pend.length>=(octave?6:2)){ win=pend; transT=pend[0].t; pend=[]; }
+        return res(now);
+      }
+      pend=[]; win.push({t:now,m});
+      return res(now);
+    };
+  }
+
+  return {yin, midiOf, noteName, tuningOf, detectKey, keyLabel, keySpoken, targetErr, inScale, Smoother, NAMES, pc};
+})();
+if(typeof module!=='undefined') module.exports=Core;
+</script>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const DEF={dz:15, full:60, maxR:10, vol:0.6, follow:0.7, listen:8, gate:0.008, span:16, ref:'a440', speak:true, ec:true, key:null, refOn:false, refVol:0.8, refTimbre:'strings', refOct:0};
+  let S=Object.assign({},DEF);
+  try{ Object.assign(S, JSON.parse(localStorage.getItem('pitchBeacon')||'{}')); }catch(e){}
+  const save=()=>{ try{ localStorage.setItem('pitchBeacon',JSON.stringify(S)); }catch(e){} };
+  const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const COL={tune:css('--tune'),sharp:css('--sharp'),flat:css('--flat'),trace:css('--trace'),muted:css('--muted'),accent:css('--accent')};
+
+  // ---------- settings ----------
+  const fmt={dz:v=>'±'+v+'¢', full:v=>v+'¢', maxR:v=>v+' / s', vol:v=>Math.round(v*100)+'%', follow:v=>Math.round(v*100)+'%',
+             listen:v=>v+' s', gate:v=>Number(v).toFixed(3), span:v=>v+' semitones', refVol:v=>Math.round(v*100)+'%'};
+  for(const k of Object.keys(fmt)){
+    const el=$(k), out=$(k+'Out'); el.value=S[k]; out.textContent=fmt[k](S[k]);
+    el.addEventListener('input',()=>{ S[k]=parseFloat(el.value); out.textContent=fmt[k](S[k]); save(); drawZone(); });
+  }
+  $('ref').value=S.ref; $('ref').addEventListener('change',e=>{S.ref=e.target.value; save(); applyRef(); renderKeyInfo();});
+  $('refOct').value=String(S.refOct); $('refOct').addEventListener('change',e=>{S.refOct=+e.target.value; save(); refNote=null;});
+  $('refTimbre').value=S.refTimbre; $('refTimbre').addEventListener('change',e=>{S.refTimbre=e.target.value; save(); setTimbre();});
+  $('leakBtn').addEventListener('click',checkLeak);
+  function showRefBtn(){ const b=$('refBtn'); b.setAttribute('aria-pressed',String(S.refOn)); b.textContent='Reference tone: '+(S.refOn?'On':'Off'); }
+  $('refBtn').addEventListener('click',()=>{ S.refOn=!S.refOn; save(); showRefBtn(); if(!S.refOn) refStop(); });
+  showRefBtn();
+  $('speak').checked=S.speak; $('speak').addEventListener('change',e=>{S.speak=e.target.checked; save();});
+  $('ec').checked=S.ec; $('ec').addEventListener('change',e=>{S.ec=e.target.checked; save();});
+  function drawZone(){ $('zone').style.left=(50-S.dz*0.5)+'%'; $('zone').style.width=S.dz+'%'; } // meter is ±100¢
+  drawZone();
+
+  // ---------- state ----------
+  let ctx=null, analyser=null, stream=null, master=null, timer=null, buf=null, wake=null;
+  let mode='idle';                 // idle | listening | locked
+  let key=S.key, candidates=[], tuning=0, refOffset=0, detected=false;
+  let collect=[], collected=0, lastT=0, suppressUntil=0;
+  let smooth=Core.Smoother(), inTune=true, nextPulse=0, lastSharp=false, level=-60;
+  let refOsc=null, refG=null, trem=null, notch=null, refNote=null, lastStableT=-1, calibrating=false;
+  const raw=[];                    // recent raw pitch frames, for reference-bleed check
+  const hist=[];                   // {t, m, s}  s: 0 neutral, 1 tune, 2 sharp, 3 flat
+  let last=null;                   // last render info
+
+  // ---------- key selectors ----------
+  const tonicSel=$('tonicSel'), modeSel=$('modeSel');
+  Core.NAMES.forEach((n,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=n; tonicSel.appendChild(o); });
+  function syncSelectors(){
+    if(key){ tonicSel.value= key.mode==='chromatic' ? 'detect' : String(key.tonic); modeSel.value=key.mode; }
+    else { tonicSel.value='detect'; }
+    tonicSel.disabled = modeSel.value==='chromatic';
+  }
+  function onSelect(){
+    tonicSel.disabled = modeSel.value==='chromatic';
+    if(modeSel.value==='chromatic'){ setKey({tonic:0, mode:'chromatic'}, 'manual'); return; }
+    if(tonicSel.value==='detect'){
+      key=null; S.key=null; save(); renderKeyInfo();
+      if(timer) beginListening(); else render();
+      return;
+    }
+    setKey({tonic:+tonicSel.value, mode:modeSel.value}, 'manual');
+  }
+  tonicSel.addEventListener('change',onSelect); modeSel.addEventListener('change',onSelect);
+
+  // ---------- audio ----------
+  function setStatus(t){ $('status').textContent=t; }
+  function showErr(t){ const e=$('err'); e.textContent=t||''; e.hidden=!t; }
+
+  function ensureCtx(){
+    if(!ctx){
+      const AC=window.AudioContext||window.webkitAudioContext; ctx=new AC();
+      // master gain → limiter, so volume following can push loud without clipping
+      const lim=ctx.createDynamicsCompressor();
+      lim.threshold.value=-4; lim.knee.value=0; lim.ratio.value=20; lim.attack.value=0.002; lim.release.value=0.12;
+      master=ctx.createGain(); master.gain.value=S.vol; master.connect(lim); lim.connect(ctx.destination);
+    }
+    if(ctx.state==='suspended') ctx.resume();
+  }
+
+  // Sharp: bright bell ping, far above the voice band (the analysis path is low-passed).
+  function ping(t){
+    [[4699,1.0],[9398,0.3]].forEach(([f,a])=>{
+      const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.5*a,t+0.002); g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t+0.11);
+    });
+  }
+  // Flat: boomy drum thump made from filtered noise. It has no steady pitch, so the
+  // pitch tracker can't mistake it for your voice (tested: 1 false reading in 200).
+  let noiseBuf=null;
+  function boom(t){
+    if(!noiseBuf){
+      noiseBuf=ctx.createBuffer(1,Math.floor(ctx.sampleRate*0.3),ctx.sampleRate);
+      const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    }
+    // deep layer for car speakers, body layer so phone speakers still carry it
+    [[190,'lowpass',0.8,7.0,0.2],[420,'bandpass',1.2,2.2,0.14]].forEach(([f,type,q,amp,len])=>{
+      const src=ctx.createBufferSource(); src.buffer=noiseBuf;
+      const f1=ctx.createBiquadFilter(); f1.type=type; f1.frequency.value=f; f1.Q.value=q;
+      const f2=ctx.createBiquadFilter(); f2.type=type; f2.frequency.value=f; f2.Q.value=q;
+      const g=ctx.createGain();
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(amp,t+0.004); g.gain.exponentialRampToValueAtTime(0.0001,t+len);
+      src.connect(f1); f1.connect(f2); f2.connect(g); g.connect(master); src.start(t); src.stop(t+len+0.02);
+    });
+  }
+  const pulse=(t,sharp)=>sharp?ping(t):boom(t);
+
+  function chime(k){
+    if(!k||k.mode==='chromatic') return 0;
+    const base=57+((k.tonic-9+12)%12)+refOffset, third=k.mode==='major'?4:3, t0=ctx.currentTime+0.05;
+    [0,third,7,12].forEach((iv,i)=>{
+      const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine';
+      o.frequency.value=440*Math.pow(2,(base+iv-69)/12);
+      const t=t0+i*0.16; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.45);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t+0.5);
+    });
+    return 0.05+3*0.16+0.5;
+  }
+  function say(text){
+    if(!S.speak || !('speechSynthesis' in window)) return;
+    try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=1.05; speechSynthesis.speak(u); }catch(e){}
+  }
+  async function keepAwake(){
+    try{ if('wakeLock' in navigator && document.visibilityState==='visible') wake=await navigator.wakeLock.request('screen'); }catch(e){}
+  }
+  document.addEventListener('visibilitychange',()=>{ if(timer && document.visibilityState==='visible') keepAwake(); });
+
+  async function startMic(){
+    showErr('');
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      showErr('This browser blocks the microphone here. Open the page from an https:// address.'); return false;
+    }
+    ensureCtx();
+    try{ speechSynthesis.speak(new SpeechSynthesisUtterance('')); }catch(e){}
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:S.ec, noiseSuppression:false, autoGainControl:false}});
+    }catch(e){
+      const where=location.protocol+'//'+(location.host||'(local file)');
+      const why={NotAllowedError:'Permission was denied, or this page is opened somewhere that blocks the mic.',
+                 SecurityError:'This address is not allowed to use the mic. It must be https.',
+                 NotFoundError:'No microphone was found.', NotReadableError:'Another app is using the microphone.'}[e.name]||'';
+      showErr('Microphone unavailable ('+e.name+'). '+why+' Page address: '+where); return false;
+    }
+    const src=ctx.createMediaStreamSource(stream);
+    // Analysis path: keep the voice fundamental band, cut the ping and road rumble.
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=65;
+    // Notch sits on the reference tone's frequency so the mic path doesn't hear it; your
+    // note's harmonics still carry its pitch. Parked out of band when the reference is off.
+    notch=ctx.createBiquadFilter(); notch.type='notch'; notch.frequency.value=12000; notch.Q.value=12;
+    const lp1=ctx.createBiquadFilter(); lp1.type='lowpass'; lp1.frequency.value=2400;
+    const lp2=ctx.createBiquadFilter(); lp2.type='lowpass'; lp2.frequency.value=2400;
+    analyser=ctx.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0;
+    src.connect(hp); hp.connect(notch); notch.connect(lp1); lp1.connect(lp2); lp2.connect(analyser);
+    // Reference tone: a soft sine that follows your target note.
+    refOsc=ctx.createOscillator(); refOsc.frequency.value=220;
+    // gentle 5 Hz loudness swell for life; pitch stays dead steady so it remains a true reference
+    trem=ctx.createGain(); trem.gain.value=1;
+    const lfo=ctx.createOscillator(), lfoG=ctx.createGain(); lfo.frequency.value=5; lfoG.gain.value=0.07;
+    lfo.connect(lfoG); lfoG.connect(trem.gain); lfo.start();
+    refG=ctx.createGain(); refG.gain.value=0;
+    refOsc.connect(trem); trem.connect(refG); refG.connect(master); refOsc.start();
+    setTimbre();
+    buf=new Float32Array(analyser.fftSize);
+    lastT=ctx.currentTime; timer=setInterval(tick,30);
+    $('stopBtn').disabled=false; setStatus('Mic on'); keepAwake(); requestAnimationFrame(draw);
+    return true;
+  }
+  function stopMic(){
+    clearInterval(timer); timer=null;
+    refStop(); try{ refOsc && refOsc.stop(); }catch(e){} refOsc=null;
+    if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null;
+    try{ wake && wake.release(); }catch(e){} wake=null;
+    mode='idle'; $('stopBtn').disabled=true; setStatus('Mic off'); last=null; render();
+  }
+
+  // ---------- key logic ----------
+  function beginListening(){
+    mode='listening'; key=null; collect=[]; collected=0; inTune=true; nextPulse=0; candidates=[]; detected=false;
+    syncSelectors(); renderKeyInfo();
+    say('Sing the opening'); suppressUntil=ctx.currentTime+0.9; render();
+  }
+  function lockFromCollect(manualTap){
+    const t=Core.tuningOf(collect), det=Core.detectKey(collect,t);
+    if(collect.length<20 || det.distinct<3){
+      if(manualTap){ say('Need more notes'); showErr('Not enough steady notes yet. Sing a few more, then tap Lock again.'); }
+      return;
+    }
+    tuning=t; detected=true; candidates=[];
+    for(const c of det.ranked){ candidates.push(c); if(candidates.length===3) break; }
+    setKey({tonic:candidates[0].tonic, mode:candidates[0].mode}, 'detect');
+  }
+  function applyRef(){ refOffset = (S.ref==='mine' && detected) ? tuning : 0; }
+  function setKey(k, source){
+    key=k; S.key=k; save();
+    if(source==='manual'){ detected=false; candidates=[]; tuning=0; }
+    applyRef(); showErr(''); syncSelectors(); renderKeyInfo();
+    if(timer){
+      mode='locked'; inTune=true; nextPulse=0;
+      const dur=chime(k); say(Core.keySpoken(k));
+      suppressUntil=ctx.currentTime+Math.max(dur,0.3)+0.2;
+    }
+    render();
+  }
+  function renderKeyInfo(){
+    const box=$('chips'); box.innerHTML='';
+    candidates.forEach((c,i)=>{
+      const b=document.createElement('button'); b.className='chip'; b.type='button';
+      b.setAttribute('aria-pressed', String(!!key && key.tonic===c.tonic && key.mode===c.mode));
+      b.textContent=Core.keyLabel(c);
+      const s=document.createElement('small'); s.textContent=i===0?'best':'alt'; b.appendChild(s);
+      b.addEventListener('click',()=>{ setKey({tonic:c.tonic,mode:c.mode},'detect'); });
+      box.appendChild(b);
+    });
+    $('keyHelp').textContent = key
+      ? (detected ? 'Detected from your singing. Tap another guess below if it picked a neighbour key.' : 'Set by you. Start goes straight to feedback.')
+      : 'Pick a key to skip detection, or leave it on "Detect by singing" and sing the opening after Start.';
+    if(detected){ const c=Math.round(tuning*100);
+      $('tuningLine').textContent='Your opening sat '+(c>0?'+':'')+c+'¢ from concert pitch. Judging against '+(S.ref==='mine'?'your opening.':'concert pitch.');
+    } else $('tuningLine').textContent='';
+  }
+
+  function refStop(){
+    if(refG && ctx) refG.gain.setTargetAtTime(0, ctx.currentTime, 0.06);
+    refNote=null;
+  }
+  const hz=m=>440*Math.pow(2,(m-69)/12);
+  const TIMBRES={ strings:[1,.62,.48,.34,.26,.19,.14,.1,.07,.05], reed:[1,.25,.75,.2,.55,.15,.4,.1,.28,.08,.18] };
+  function setTimbre(){
+    if(!refOsc) return;
+    const h=TIMBRES[S.refTimbre];
+    if(!h){ refOsc.type='sine'; }
+    else {
+      const re=new Float32Array(h.length+1), im=new Float32Array(h.length+1);
+      h.forEach((a,i)=>{ im[i+1]=a; });
+      refOsc.setPeriodicWave(ctx.createPeriodicWave(re,im));
+    }
+    // Only the sine can be notched: a rich tone's harmonics land on your voice's harmonics when you are in tune.
+    if(S.refTimbre!=='sine') notch.frequency.setValueAtTime(12000,ctx.currentTime);
+    else if(refNote!=null) notch.frequency.setValueAtTime(hz(refNote),ctx.currentTime);
+  }
+  // Leak check: play the reference while the singer is quiet, compare mic level with their singing level.
+  let singDb=null;
+  function checkLeak(){
+    const out=$('leakOut');
+    if(!timer){ out.textContent='Start the mic first'; return; }
+    if(singDb==null){ out.textContent='Sing a few notes first'; return; }
+    calibrating=true; refStop();
+    const t0=ctx.currentTime; const f=hz(57); suppressUntil=t0+1.7;
+    refOsc.frequency.setValueAtTime(f,t0); if(S.refTimbre==='sine') notch.frequency.setValueAtTime(f,t0);
+    refG.gain.setTargetAtTime(S.refVol,t0,0.03);
+    let sum=0,n=0; const b=new Float32Array(analyser.fftSize);
+    const iv=setInterval(()=>{
+      const t=ctx.currentTime-t0;
+      if(t>0.6 && t<1.5){ analyser.getFloatTimeDomainData(b); let ss=0; for(let i=0;i<b.length;i++) ss+=b[i]*b[i]; sum+=ss/b.length; n++; }
+      if(t>=1.5){
+        clearInterval(iv); refG.gain.setTargetAtTime(0,ctx.currentTime,0.05); calibrating=false; refNote=null;
+        const leak=Math.round(10*Math.log10(sum/Math.max(1,n)+1e-12)-singDb);
+        out.textContent=(leak>0?'+':'')+leak+' dB '+(leak<-18?'· clean':leak<-10?'· usable, pulls ~5¢':'· too loud');
+      }
+    },30);
+  }
+
+  // ---------- main analysis loop ----------
+  function tick(){
+    const now=ctx.currentTime, dt=Math.min(0.1,now-lastT); lastT=now;
+    analyser.getFloatTimeDomainData(buf);
+    let ss=0; for(let i=0;i<buf.length;i++) ss+=buf[i]*buf[i];
+    const rms=Math.sqrt(ss/buf.length);
+    let m=null;
+    if(now>=suppressUntil && rms>S.gate){ const r=Core.yin(buf,ctx.sampleRate); if(r) m=Core.midiOf(r.f); }
+    // Reference bleed check: a voice always wobbles a few cents; a speaker tone doesn't.
+    // Reject frames that sit dead still on the reference pitch (or its octaves).
+    raw.push({t:now,m}); while(raw.length && now-raw[0].t>0.3) raw.shift();
+    if(m!=null && refNote!=null){
+      const d=m-refNote, dOct=d-12*Math.round(d/12);
+      if(Math.abs(dOct)<0.12){
+        const v=raw.filter(r=>r.m!=null).map(r=>r.m);
+        if(v.length>=6){ const mu=v.reduce((a,b)=>a+b,0)/v.length; const sd=Math.sqrt(v.reduce((a,b)=>a+(b-mu)*(b-mu),0)/v.length);
+          if(sd<0.015){ m=null; raw[raw.length-1].m=null; } }
+      }
+    }
+    const st=smooth(now,m);
+
+    // Follow singing volume: fast attack, slow release, relative to a -30 dBFS speaking level.
+    if(m!=null){
+      const db=20*Math.log10(rms+1e-9);
+      level += (db-level)*(db>level?0.5:0.08);
+      if(!calibrating) singDb = singDb==null ? db : singDb+(db-singDb)*0.02;
+      const boostDb=S.follow*Math.max(-12,Math.min(18,level+30));
+      master.gain.setTargetAtTime(S.vol*Math.pow(10,boostDb/20), now, 0.05);
+    }
+
+    if(mode==='listening' && st.stable){
+      collect.push(st.mean); collected+=dt;
+      if(collected>=S.listen) lockFromCollect(false);
+    }
+
+    let fb=null, state=0;
+    if(mode==='locked' && st.stable){
+      fb=Core.targetErr(st.mean-refOffset,key);
+      const a=Math.abs(fb.err);
+      if(inTune){ if(a>S.dz+4) inTune=false; } else if(a<S.dz) inTune=true;
+      state= inTune?1:(fb.err>0?2:3);
+      if(!inTune){
+        const frac=Math.max(0,Math.min(1,(a-S.dz)/Math.max(1,S.full-S.dz)));
+        const rate=2+frac*(S.maxR-2), sharp=fb.err>0;
+        if(sharp!==lastSharp || nextPulse<now) nextPulse=now+0.01;
+        lastSharp=sharp;
+        while(nextPulse<now+0.06){ pulse(nextPulse,sharp); nextPulse+=1/rate; }
+      } else nextPulse=0;
+    } else { inTune=true; nextPulse=0; }
+
+    // Reference tone follows the target note while you sing.
+    if(st.stable) lastStableT=now;
+    if(calibrating){ /* leak check owns the reference */ }
+    else if(S.refOn && mode==='locked' && fb){
+      const n=fb.target+refOffset+S.refOct;
+      if(n!==refNote){
+        const f=hz(n);
+        if(refNote==null) refOsc.frequency.setValueAtTime(f,now); else refOsc.frequency.setTargetAtTime(f,now,0.012);
+        if(S.refTimbre==='sine') notch.frequency.setTargetAtTime(f,now,0.005);
+        refNote=n;
+      }
+      refG.gain.setTargetAtTime(S.refVol,now,0.04);
+    } else if(!calibrating && refNote!=null && (!S.refOn || mode!=='locked' || now-lastStableT>0.3)){
+      refStop();
+    }
+
+    hist.push({t:now, m, s:state});
+    while(hist.length && now-hist[0].t>12) hist.shift();
+    last={st, fb, state};
+    render();
+  }
+
+  // ---------- readout ----------
+  function render(){
+    const ro=$('readout'), needle=$('needle');
+    ro.classList.remove('state-tune','state-sharp','state-flat');
+    $('keyName').textContent=Core.keyLabel(key);
+    $('phase').textContent= mode==='idle'?'Ready': mode==='listening'?'Listening':'Locked';
+    $('progWrap').hidden= mode!=='listening';
+    if(mode==='listening') $('prog').style.width=Math.min(100,collected/S.listen*100)+'%';
+    $('mainBtn').textContent= mode==='idle'?'Start': mode==='listening'?'Lock key now':'Detect again';
+    const st=last&&last.st;
+    if(!st || st.mean==null || !st.stable){ $('note').textContent='–'; $('cents').textContent=''; needle.style.opacity='0'; return; }
+    const te= last.fb || Core.targetErr(st.mean-refOffset,null);
+    $('note').textContent=Core.noteName(te.target);
+    const e=Math.round(te.err); $('cents').textContent=(e>0?'+':'')+e+'¢';
+    needle.style.opacity='1'; needle.style.left=(50+Math.max(-100,Math.min(100,te.err))*0.5)+'%';
+    if(mode==='locked') ro.classList.add(['','state-tune','state-sharp','state-flat'][last.state]||'');
+  }
+
+  // ---------- scrolling pitch graph ----------
+  const cv=$('graph'), g=cv.getContext('2d');
+  let center=55, W=0, H=0, dpr=1;
+  function resize(){
+    dpr=Math.min(3,window.devicePixelRatio||1);
+    const r=cv.getBoundingClientRect(); W=r.width; H=r.height;
+    cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); g.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize',()=>{ resize(); draw(); });
+  resize();
+
+  function draw(){
+    const now= ctx? ctx.currentTime : 0, WIN=8, LBL=42, span=S.span;
+    // follow the singer: ease the centre toward the recent stable pitch
+    if(last && last.st && last.st.stable){
+      const d=last.st.mean-center; center+= Math.abs(d)>span*0.35 ? d*0.2 : d*0.04;
+    }
+    const lo=center-span/2, hi=center+span/2;
+    const y=m=>H-(m-lo)/(hi-lo)*H, x=t=>LBL+(t-(now-WIN))/WIN*(W-LBL);
+    g.fillStyle='#000'; g.fillRect(0,0,W,H);
+    g.font='600 12px Barlow, system-ui, sans-serif'; g.textBaseline='middle';
+
+    // note lines, drawn at the active reference
+    for(let n=Math.floor(lo)-1;n<=Math.ceil(hi)+1;n++){
+      const yy=y(n+refOffset); if(yy<-10||yy>H+10) continue;
+      const scale=Core.inScale(n,key), tonic= key && key.mode!=='chromatic' && Core.pc(n-key.tonic)===0;
+      const isC=Core.pc(n)===0;
+      if(scale && key && mode==='locked'){
+        const half=S.dz/100*(H/span);
+        g.fillStyle='rgba(95,211,154,0.13)'; g.fillRect(LBL,yy-half,W-LBL,half*2);
+      }
+      g.strokeStyle= tonic? 'rgba(95,211,154,0.85)' : scale? (key? 'rgba(232,236,234,0.45)' : (isC?'rgba(232,236,234,0.5)':'rgba(232,236,234,0.22)')) : 'rgba(232,236,234,0.08)';
+      g.lineWidth= tonic?2:1; g.setLineDash(scale?[]:[3,5]);
+      g.beginPath(); g.moveTo(LBL,yy); g.lineTo(W,yy); g.stroke(); g.setLineDash([]);
+      if(scale){
+        g.fillStyle= tonic? COL.accent : 'rgba(232,236,234,'+(key?0.75:(isC?0.8:0.5))+')';
+        g.fillText(Core.noteName(n),6,yy);
+      }
+    }
+    g.strokeStyle='rgba(232,236,234,0.25)'; g.lineWidth=1; g.beginPath(); g.moveTo(LBL,0); g.lineTo(LBL,H); g.stroke();
+
+    // pitch trace
+    const colOf=s=>[COL.trace,COL.tune,COL.sharp,COL.flat][s]||COL.trace;
+    g.lineWidth=2.2; g.lineJoin='round'; g.lineCap='round';
+    let prev=null;
+    for(const p of hist){
+      if(p.t<now-WIN-0.1){ prev=p; continue; }
+      if(p.m!=null && prev && prev.m!=null && p.t-prev.t<0.1 && Math.abs(p.m-prev.m)<1.5){
+        g.strokeStyle=colOf(p.s); g.beginPath(); g.moveTo(x(prev.t),y(prev.m)); g.lineTo(x(p.t),y(p.m)); g.stroke();
+      }
+      prev=p;
+    }
+    const lp=hist[hist.length-1];
+    if(lp && lp.m!=null && now-lp.t<0.15){ g.fillStyle=colOf(lp.s); g.beginPath(); g.arc(x(lp.t),y(lp.m),4.5,0,7); g.fill(); }
+    if(!timer){ g.fillStyle='rgba(232,236,234,0.45)'; g.textAlign='center'; g.fillText('Tap Start, then sing',(W+LBL)/2,H/2); g.textAlign='left'; }
+    if(timer) requestAnimationFrame(draw);
+  }
+
+  // ---------- buttons ----------
+  $('mainBtn').addEventListener('click', async ()=>{
+    if(mode==='idle'){
+      if(!timer){ const ok=await startMic(); if(!ok) return; }
+      if(key) setKey(key, detected?'detect':'manual'); else beginListening();
+    } else if(mode==='listening'){ lockFromCollect(true); }
+    else { beginListening(); }
+  });
+  $('stopBtn').addEventListener('click',stopMic);
+  $('testSharp').addEventListener('click',()=>{ ensureCtx(); master.gain.value=S.vol; const t=ctx.currentTime+0.05; for(let i=0;i<4;i++) ping(t+i*0.22); });
+  $('testFlat').addEventListener('click',()=>{ ensureCtx(); master.gain.value=S.vol; const t=ctx.currentTime+0.05; for(let i=0;i<4;i++) boom(t+i*0.22); });
+
+  syncSelectors(); renderKeyInfo(); render(); draw();
+})();
+</script>
+</body>
+</html>
